@@ -7,15 +7,16 @@ entity teclado is
     Port (
         clk_27mhz : in  STD_LOGIC;
         reset     : in  STD_LOGIC;
+        clear     : in  STD_LOGIC; -- <<-- NUEVO PUERTO CLEAR
         fila      : in  std_logic_vector(3 downto 0);
         columnas  : out std_logic_vector(3 downto 0);
-        numero    : out std_logic_vector(31 downto 0)  -- 8 dígitos hexadecimales (32 bits)
+        numero    : out std_logic_vector(31 downto 0) 
     );
 end teclado;
 
 architecture Behavioral of teclado is
 
-    signal dig7, dig6, dig5, dig4, dig3, dig2, dig1, dig0 : STD_LOGIC_VECTOR(3 downto 0) := "0000"; -- Inicializar en "0000"
+    signal dig7, dig6, dig5, dig4, dig3, dig2, dig1, dig0 : STD_LOGIC_VECTOR(3 downto 0) := "0000";
     signal clk_tec: std_logic := '0';
     signal contador_1khz: integer := 0;
     signal tec: std_logic_vector(3 downto 0) := "1000";
@@ -32,52 +33,46 @@ architecture Behavioral of teclado is
     
 begin
 
-    -- Número de salida (8 dígitos hexadecimales)
     numero <= dig7 & dig6 & dig5 & dig4 & dig3 & dig2 & dig1 & dig0;
-
     fila_leida <= fila;
 
+    -- Proceso de escaneo (Maquina de estados del barrido) - NO CAMBIA
     process(clk_tec)
     begin
         if rising_edge(clk_tec) then
             tecla_presionada <= '0';
-            
-           case tec & fila_leida is
-    -- Primera columna (tec = "1000")
-    when "10000001" => digito <= "0001"; tecla_presionada <= '1'; -- 1
-    when "10000010" => digito <= "0100"; tecla_presionada <= '1'; -- 4
-    when "10000100" => digito <= "0111"; tecla_presionada <= '1'; -- 7
-    when "10001000" => digito <= "1111"; tecla_presionada <= '1'; -- F
-    
-    -- Segunda columna (tec = "0100")
-    when "01000001" => digito <= "0010"; tecla_presionada <= '1'; -- 2
-    when "01000010" => digito <= "0101"; tecla_presionada <= '1'; -- 5
-    when "01000100" => digito <= "1000"; tecla_presionada <= '1'; -- 8
-    when "01001000" => digito <= "0000"; tecla_presionada <= '1'; -- 0
-    
-    -- Tercera columna (tec = "0010")
-    when "00100001" => digito <= "0011"; tecla_presionada <= '1'; -- 3
-    when "00100010" => digito <= "0110"; tecla_presionada <= '1'; -- 6
-    when "00100100" => digito <= "1001"; tecla_presionada <= '1'; -- 9
-    when "00101000" => digito <= "1110"; tecla_presionada <= '1'; -- E
-    
-    -- Cuarta columna (tec = "0001")
-    when "00010001" => digito <= "1010"; tecla_presionada <= '1'; -- A
-    when "00010010" => digito <= "1011"; tecla_presionada <= '1'; -- B
-    when "00010100" => digito <= "1100"; tecla_presionada <= '1'; -- C
-    when "00011000" => digito <= "1101"; tecla_presionada <= '1'; -- D
-    
-    when others => null;
-end case;
-            
+            case tec & fila_leida is
+                -- Primera columna
+                when "10000001" => digito <= "0001"; tecla_presionada <= '1'; -- 1
+                when "10000010" => digito <= "0100"; tecla_presionada <= '1'; -- 4
+                when "10000100" => digito <= "0111"; tecla_presionada <= '1'; -- 7
+                when "10001000" => digito <= "1111"; tecla_presionada <= '1'; -- F
+                -- Segunda columna
+                when "01000001" => digito <= "0010"; tecla_presionada <= '1'; -- 2
+                when "01000010" => digito <= "0101"; tecla_presionada <= '1'; -- 5
+                when "01000100" => digito <= "1000"; tecla_presionada <= '1'; -- 8
+                when "01001000" => digito <= "0000"; tecla_presionada <= '1'; -- 0
+                -- Tercera columna
+                when "00100001" => digito <= "0011"; tecla_presionada <= '1'; -- 3
+                when "00100010" => digito <= "0110"; tecla_presionada <= '1'; -- 6
+                when "00100100" => digito <= "1001"; tecla_presionada <= '1'; -- 9
+                when "00101000" => digito <= "1110"; tecla_presionada <= '1'; -- E
+                -- Cuarta columna
+                when "00010001" => digito <= "1010"; tecla_presionada <= '1'; -- A
+                when "00010010" => digito <= "1011"; tecla_presionada <= '1'; -- B
+                when "00010100" => digito <= "1100"; tecla_presionada <= '1'; -- C
+                when "00011000" => digito <= "1101"; tecla_presionada <= '1'; -- D
+                when others => null;
+            end case;
         end if;
     end process;
-    
-    -- Proceso principal para el desplazamiento de dígitos
-    process(clk_27mhz, res_db)
+
+    -- PROCESO PRINCIPAL DE REGISTROS (AQUÍ ESTÁ EL CAMBIO)
+    -- Se añade 'clear' a la lista de sensibilidad si quieres reset asíncrono inmediato
+    process(clk_27mhz, res_db, clear) 
     begin
-        if res_db = '0' then
-            -- Reset: poner todos los dígitos en "0000" (apagado)
+        -- Condición de borrado: Reset Global O Botón Clear presionado ('0')
+        if res_db = '0' or clear = '1' then 
             dig7 <= "0000";
             dig6 <= "0000";
             dig5 <= "0000";
@@ -91,7 +86,6 @@ end case;
             tecla_presionada_prev <= tecla_presionada;
             digito_valido <= '0';
             
-            -- Detección de flanco positivo en tecla presionada
             if tecla_presionada = '1' and tecla_presionada_prev = '0' then
                 if anti_rebote_counter = 0 then
                     tecla_valida_pulsada <= '1';
@@ -99,12 +93,11 @@ end case;
                 end if;
             end if;
             
-            -- Cuando termina el anti-rebote, realizar el desplazamiento
             if tecla_valida_pulsada = '1' and anti_rebote_counter = DEBOUNCE_TIME - 1 then
                 digito_valido <= '1';
                 tecla_valida_pulsada <= '0';
                 
-                -- Realizar desplazamiento a la izquierda de 4 bits
+                -- Desplazamiento
                 dig7 <= dig6;
                 dig6 <= dig5;
                 dig5 <= dig4;
@@ -112,17 +105,16 @@ end case;
                 dig3 <= dig2;
                 dig2 <= dig1;
                 dig1 <= dig0;
-                dig0 <= digito;  -- Nuevo dígito en la posición menos significativa
+                dig0 <= digito;
             end if;
-            
-            -- Contador anti-rebote
+
             if anti_rebote_counter > 0 then
                 anti_rebote_counter <= anti_rebote_counter - 1;
             end if;
         end if;
     end process;
 
-    -- Proceso para el debounce del reset
+    -- Debounce del Reset (Igual)
     process(clk_27mhz)
     begin
         if rising_edge(clk_27mhz) then
@@ -135,7 +127,7 @@ end case;
         end if;
     end process;
 
-    -- Generación de reloj para el teclado (1kHz)
+    -- Reloj 1kHz (Igual)
     process(clk_27mhz)
     begin
         if rising_edge(clk_27mhz) then
@@ -148,7 +140,7 @@ end case;
         end if;
     end process;
 
-    -- Rotación de columnas para el escaneo del teclado
+    -- Rotación de columnas (Igual)
     process(clk_tec)
     begin
         if rising_edge(clk_tec) then
